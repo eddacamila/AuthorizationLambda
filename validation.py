@@ -3,11 +3,7 @@ import jwt
 from datetime import datetime
 from config import app, ROLE_PERMISSIONS
 from authentication import auth_system
-import logging
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
+import os
 
 validation_bp = Blueprint('validation', __name__)
 
@@ -19,10 +15,19 @@ def is_valid_permission(permission: str) -> bool:
     return permission in all_permissions
 
 def log_suspicious_activity(email: str, permission: str, role: str):
-    """Log suspicious permission usage to CloudWatch"""
+    """Log suspicious permission usage"""
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"[{timestamp}] User: {email}, Permission: {permission}, Mismatched Role: {role}"
-    logger.warning(log_entry)
+    log_entry = f"[{timestamp}] User: {email}, Permission: {permission}, Mismatched Role: {role}\n"
+    
+    # Create logs directory if it doesn't exist
+    log_directory = "logs"
+    if not os.path.exists(log_directory):
+        os.makedirs(log_directory)
+    
+    # Write to log file
+    log_file_path = os.path.join(log_directory, "suspicious_permissions.log")
+    with open(log_file_path, "a") as log_file:
+        log_file.write(log_entry)
 
 @validation_bp.route('/api/validation/token', methods=['POST'])
 def verify_permission():
