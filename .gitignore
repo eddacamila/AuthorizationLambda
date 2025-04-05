@@ -1,0 +1,11 @@
+.venv
+.venv*
+__pycache__
+*.log
+*.log.*
+*.log.*.*
+*.log.*.*.*
+*.log.*.*.*.*
+*.log.*.*.*.*.*
+*.log.*.*.*.*.*.*
+suspicious_permissions.log
