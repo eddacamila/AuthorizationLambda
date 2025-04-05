@@ -1,9 +1,18 @@
 from flask import Flask
+from flask_cors import CORS
 import os
 from enum import Enum
-from typing import Dict, List
 
 app = Flask(__name__)
+
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:5173"],  # Your Vue.js frontend URL
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
+
 app.config['SECRET_KEY'] = os.urandom(24)
 
 class Roles(Enum):

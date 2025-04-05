@@ -3,7 +3,6 @@ from cryptography.fernet import Fernet
 from typing import Dict, List
 import jwt
 from datetime import datetime, timedelta
-from functools import wraps
 from config import app, ROLE_PERMISSIONS, Roles
 
 class AuthenticationSystem:
