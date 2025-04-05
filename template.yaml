@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Authentication API Lambda function
+
+Resources:
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-suspicious-logs'
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArchiveOldLogs
+            Status: Enabled
+            ExpirationInDays: 90  # Adjust retention period as needed
+
+  AuthenticationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./deployment-package.zip
+      Handler: lambda_handler.handler
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          SECRET_KEY: !Sub '${AWS::StackName}-secret-key'
+          LOG_BUCKET_NAME: !Ref LogBucket
+          FERNET_KEY: !Sub '${AWS::StackName}-fernet-key'  # You should set this securely
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - CloudWatchLogsFullAccess
+        - S3WritePolicy:
+            BucketName: !Ref LogBucket
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
+  LogBucketName:
+    Description: Name of the S3 bucket storing suspicious activity logs
+    Value: !Ref LogBucket 

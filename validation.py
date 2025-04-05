@@ -4,8 +4,14 @@ from datetime import datetime
 from config import app, ROLE_PERMISSIONS
 from authentication import auth_system
 import os
+import logging
+import traceback
+import boto3
+from botocore.exceptions import ClientError
 
 validation_bp = Blueprint('validation', __name__)
+logger = logging.getLogger()
+logger.setLevel(logging.WARNING)
 
 def is_valid_permission(permission: str) -> bool:
     """Check if permission exists in any role"""
@@ -14,20 +20,60 @@ def is_valid_permission(permission: str) -> bool:
         all_permissions.update(permissions)
     return permission in all_permissions
 
+def upload_to_s3(log_entry: str, bucket_name: str):
+    """Upload log entry to S3 bucket"""
+    try:
+        s3_client = boto3.client('s3')
+        # Create a timestamp-based key for the log entry
+        timestamp = datetime.utcnow().strftime("%Y/%m/%d/suspicious_permissions.log")
+        
+        # Try to get existing log content
+        try:
+            response = s3_client.get_object(Bucket=bucket_name, Key=timestamp)
+            existing_content = response['Body'].read().decode('utf-8')
+            log_content = existing_content + log_entry
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                # File doesn't exist yet, use new log entry
+                log_content = log_entry
+            else:
+                raise
+
+        # Upload the log content
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=timestamp,
+            Body=log_content.encode('utf-8'),
+            ContentType='text/plain'
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Error uploading to S3: {str(e)}")
+        return False
+
 def log_suspicious_activity(email: str, permission: str, role: str):
     """Log suspicious permission usage"""
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"[{timestamp}] User: {email}, Permission: {permission}, Mismatched Role: {role}\n"
     
-    # Create logs directory if it doesn't exist
-    log_directory = "logs"
-    if not os.path.exists(log_directory):
-        os.makedirs(log_directory)
-    
-    # Write to log file
-    log_file_path = os.path.join(log_directory, "suspicious_permissions.log")
-    with open(log_file_path, "a") as log_file:
-        log_file.write(log_entry)
+    if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+        logger.warning(log_entry)
+        
+        # Upload to S3
+        bucket_name = os.environ.get('LOG_BUCKET_NAME')
+        if bucket_name:
+            upload_success = upload_to_s3(log_entry, bucket_name)
+            if not upload_success:
+                logger.error("Failed to upload log to S3")
+    else:
+        # Local file logging
+        log_directory = "logs"
+        if not os.path.exists(log_directory):
+            os.makedirs(log_directory)
+        
+        log_file_path = os.path.join(log_directory, "suspicious_permissions.log")
+        with open(log_file_path, "a") as log_file:
+            log_file.write(log_entry)
 
 @validation_bp.route('/api/validation/token', methods=['POST'])
 def verify_permission():
@@ -78,4 +124,9 @@ def verify_permission():
         return jsonify({'message': 'Unauthorized'}), 401
 
     except Exception as e:
-        return jsonify({'message': f'Error: {str(e)}'}), 500 
+        error_details = traceback.format_exc()
+        logger.error(f"Error in verify_permission: {error_details}")
+        return jsonify({
+            'message': 'Internal server error',
+            'error': str(e)
+        }), 500 

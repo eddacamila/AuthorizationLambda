@@ -5,10 +5,20 @@ import jwt
 from datetime import datetime, timedelta
 from functools import wraps
 from config import app, ROLE_PERMISSIONS, Roles
+import os
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.WARNING)
 
 class AuthenticationSystem:
     def __init__(self):
-        self.key = Fernet.generate_key()
+        # Use environment variable for key in Lambda, or generate one for local
+        if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+            self.key = os.environ.get('FERNET_KEY', Fernet.generate_key())
+        else:
+            self.key = Fernet.generate_key()
+            
         self.cipher_suite = Fernet(self.key)
         self.users = {
             "admin@example.com": {
@@ -61,69 +71,89 @@ class AuthenticationSystem:
         Add a new user with role-based permissions
         Returns tuple (success, message, data)
         """
-        if email in self.users:
-            return {
-                'success': False,
-                'message': 'Email already exists',
-                'status_code': 400
+        try:
+            if email in self.users:
+                return {
+                    'success': False,
+                    'message': 'Email already exists',
+                    'status_code': 400
+                }
+
+            if not self.is_valid_role(role):
+                return {
+                    'success': False,
+                    'message': f'Invalid role. Allowed roles: {[r.value for r in Roles]}',
+                    'status_code': 400
+                }
+
+            permissions = self.get_permissions_for_role(role)
+            
+            self.users[email] = {
+                "password": self.encrypt_password(password),
+                "role": role,
+                "permissions": permissions
             }
 
-        if not self.is_valid_role(role):
+            return {
+                'success': True,
+                'message': 'User created successfully',
+                'data': {
+                    'email': email,
+                    'role': role,
+                    'permissions': permissions
+                },
+                'status_code': 201
+            }
+        except Exception as e:
+            logger.error(f"Error adding user: {str(e)}")
             return {
                 'success': False,
-                'message': f'Invalid role. Allowed roles: {[r.value for r in Roles]}',
-                'status_code': 400
+                'message': 'Error adding user',
+                'status_code': 500
             }
-
-        permissions = self.get_permissions_for_role(role)
-        
-        self.users[email] = {
-            "password": self.encrypt_password(password),
-            "role": role,
-            "permissions": permissions
-        }
-
-        return {
-            'success': True,
-            'message': 'User created successfully',
-            'data': {
-                'email': email,
-                'role': role,
-                'permissions': permissions
-            },
-            'status_code': 201
-        }
 
     def authenticate(self, email: str, password: str) -> bool:
-        if email not in self.users:
+        try:
+            if email not in self.users:
+                return False
+            stored_password = self.decrypt_password(self.users[email]["password"])
+            return stored_password == password
+        except Exception as e:
+            logger.error(f"Error in authentication: {str(e)}")
             return False
-        stored_password = self.decrypt_password(self.users[email]["password"])
-        return stored_password == password
 
     def get_user_data(self, email: str) -> Dict:
-        if email in self.users:
-            return {
-                "email": email,
-                "role": self.users[email]["role"],
-                "permissions": self.users[email]["permissions"]
-            }
-        return None
+        try:
+            if email in self.users:
+                return {
+                    "email": email,
+                    "role": self.users[email]["role"],
+                    "permissions": self.users[email]["permissions"]
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user data: {str(e)}")
+            return None
 
 # Initialize the authentication system
 auth_system = AuthenticationSystem()
 
 def generate_token(user_data: Dict) -> str:
-    token = jwt.encode(
-        {
-            'email': user_data['email'],
-            'role': user_data['role'],
-            'permissions': user_data['permissions'],
-            'exp': datetime.utcnow() + timedelta(hours=24)
-        },
-        app.config['SECRET_KEY'],
-        algorithm='HS256'
-    )
-    return token
+    try:
+        token = jwt.encode(
+            {
+                'email': user_data['email'],
+                'role': user_data['role'],
+                'permissions': user_data['permissions'],
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            },
+            app.config['SECRET_KEY'],
+            algorithm='HS256'
+        )
+        return token
+    except Exception as e:
+        logger.error(f"Error generating token: {str(e)}")
+        raise
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
@@ -152,7 +182,8 @@ def register():
         }), result['status_code']
 
     except Exception as e:
-        return jsonify({'message': f'Error: {str(e)}'}), 500
+        logger.error(f"Error in register endpoint: {str(e)}")
+        return jsonify({'message': 'Internal server error'}), 500
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
@@ -177,7 +208,8 @@ def login():
             return jsonify({'message': 'Invalid credentials'}), 401
 
     except Exception as e:
-        return jsonify({'message': f'Error: {str(e)}'}), 500
+        logger.error(f"Error in login endpoint: {str(e)}")
+        return jsonify({'message': 'Internal server error'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
