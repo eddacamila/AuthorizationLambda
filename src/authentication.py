@@ -1,10 +1,13 @@
 from flask import request, jsonify
-from cryptography.fernet import Fernet
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad, unpad
+import base64
 from typing import Dict, List
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from config import app, ROLE_PERMISSIONS, Roles
+from config import app, ROLE_PERMISSIONS, Roles, ENCRYPTION_KEY
 import os
 import logging
 
@@ -13,13 +16,9 @@ logger.setLevel(logging.WARNING)
 
 class AuthenticationSystem:
     def __init__(self):
-        # Use environment variable for key in Lambda, or generate one for local
-        if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
-            self.key = os.environ.get('FERNET_KEY', Fernet.generate_key())
-        else:
-            self.key = Fernet.generate_key()
+        # Use the simple key from config
+        self.key = ENCRYPTION_KEY
             
-        self.cipher_suite = Fernet(self.key)
         self.users = {
             "admin@example.com": {
                 "password": self.encrypt_password("admin123"),
@@ -50,11 +49,28 @@ class AuthenticationSystem:
             }
         }
 
-    def encrypt_password(self, password: str) -> bytes:
-        return self.cipher_suite.encrypt(password.encode())
+    def encrypt_password(self, password: str) -> str:
+        try:
+            cipher = AES.new(self.key, AES.MODE_CBC)
+            ct_bytes = cipher.encrypt(pad(password.encode(), AES.block_size))
+            iv = base64.b64encode(cipher.iv).decode('utf-8')
+            ct = base64.b64encode(ct_bytes).decode('utf-8')
+            return f"{iv}:{ct}"
+        except Exception as e:
+            logger.error(f"Error encrypting password: {str(e)}")
+            raise
 
-    def decrypt_password(self, encrypted_password: bytes) -> str:
-        return self.cipher_suite.decrypt(encrypted_password).decode()
+    def decrypt_password(self, encrypted_password: str) -> str:
+        try:
+            iv, ct = encrypted_password.split(':')
+            iv = base64.b64decode(iv)
+            ct = base64.b64decode(ct)
+            cipher = AES.new(self.key, AES.MODE_CBC, iv)
+            pt = unpad(cipher.decrypt(ct), AES.block_size)
+            return pt.decode('utf-8')
+        except Exception as e:
+            logger.error(f"Error decrypting password: {str(e)}")
+            raise
 
     def get_permissions_for_role(self, role: str) -> List[str]:
         return ROLE_PERMISSIONS.get(role, [])

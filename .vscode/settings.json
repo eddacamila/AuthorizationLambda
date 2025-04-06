@@ -1,0 +1,8 @@
+{
+  "python.analysis.typeEvaluation.enableReachabilityAnalysis": true,
+  "python.analysis.supportAllPythonDocuments": true,
+  "python.analysis.extraPaths": [
+      "./",
+      "./src"
+  ]
+}

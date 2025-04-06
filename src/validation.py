@@ -7,7 +7,6 @@ import os
 import logging
 import traceback
 import boto3
-from botocore.exceptions import ClientError
 
 validation_bp = Blueprint('validation', __name__)
 logger = logging.getLogger()
@@ -32,12 +31,12 @@ def upload_to_s3(log_entry: str, bucket_name: str):
             response = s3_client.get_object(Bucket=bucket_name, Key=timestamp)
             existing_content = response['Body'].read().decode('utf-8')
             log_content = existing_content + log_entry
-        except ClientError as e:
+        except e:
             if e.response['Error']['Code'] == 'NoSuchKey':
-                # File doesn't exist yet, use new log entry
                 log_content = log_entry
             else:
-                raise
+                logger.error(f"Error retrieving existing log: {str(e)}")
+                return False
 
         # Upload the log content
         s3_client.put_object(
@@ -85,12 +84,10 @@ def verify_permission():
         if not token or not permission:
             return jsonify({'message': 'Missing token or permission'}), 400
 
-        # Check if permission is valid
         if not is_valid_permission(permission):
             return jsonify({'message': 'Invalid permission'}), 400
 
         try:
-            # Decode token
             token_data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
@@ -100,7 +97,6 @@ def verify_permission():
         email = token_data.get('email')
         token_permissions = token_data.get('permissions', [])
         
-        # Check if user exists in database
         user_data = auth_system.get_user_data(email)
         if not user_data:
             return jsonify({'message': 'User not found'}), 401
@@ -109,15 +105,12 @@ def verify_permission():
         if permission not in token_permissions:
             return jsonify({'message': 'Unauthorized - Permission not in token'}), 401
 
-        # Get role's allowed permissions
         role_permissions = auth_system.get_permissions_for_role(user_data['role'])
 
-        # Check if permission is in user's permissions but not in role's permissions
         if permission in user_data['permissions'] and permission not in role_permissions:
             log_suspicious_activity(email, permission, user_data['role'])
             return jsonify({'message': 'Permission verified successfully (logged for review)'}), 200
 
-        # Check if permission is in user's permissions and role's permissions
         if permission in user_data['permissions'] and permission in role_permissions:
             return jsonify({'message': 'Permission verified successfully'}), 200
 

@@ -16,16 +16,15 @@ Resources:
   AuthenticationFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./deployment-package.zip
+      CodeUri: ./src
       Handler: lambda_handler.handler
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 30
       MemorySize: 256
       Environment:
         Variables:
           SECRET_KEY: !Sub '${AWS::StackName}-secret-key'
           LOG_BUCKET_NAME: !Ref LogBucket
-          FERNET_KEY: !Sub '${AWS::StackName}-fernet-key'  # You should set this securely
       Events:
         ApiEvent:
           Type: HttpApi

@@ -6,6 +6,9 @@ from typing import Dict, List
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
 
+# Simple 32-byte key for AES encryption
+ENCRYPTION_KEY = b'0123456789abcdef0123456789abcdef'  # 32 bytes
+
 class Roles(Enum):
     ADMIN = "admin"
     VENDOR = "vendor"
