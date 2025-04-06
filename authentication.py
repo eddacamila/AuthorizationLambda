@@ -27,10 +27,8 @@ class AuthenticationSystem:
                 "permissions": [
                     "adminRead",
                     "adminWrite",
-                    "adminDelete",
                     "vendorRead",
                     "vendorWrite",
-                    "vendorDelete"
                 ]
             },
             "vendor@example.com": {
@@ -39,7 +37,6 @@ class AuthenticationSystem:
                 "permissions": [
                     "vendorRead",
                     "vendorWrite",
-                    "vendorDelete"
                 ]
             },
             "suspiciousVendor@example.com": {
@@ -48,7 +45,6 @@ class AuthenticationSystem:
                 "permissions": [
                     "vendorRead",
                     "vendorWrite",
-                    "vendorDelete",
                     "adminRead"
                 ]
             }
