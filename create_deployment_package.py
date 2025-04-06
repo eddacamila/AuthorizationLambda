@@ -18,7 +18,7 @@ def create_deployment_package():
     # Install dependencies to deployment directory
     subprocess.run([
         'pip', 'install',
-        '-r', 'requirements.txt',
+        '-r', str(src_dir / 'requirements.txt'),
         '--target', str(deployment_dir)
     ])
 

@@ -1,5 +1,5 @@
-from config import app
-from validation import validation_bp
+from src.config import app
+from src.validation import validation_bp
 
 app.register_blueprint(validation_bp)
 
